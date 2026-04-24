@@ -47,14 +47,6 @@
     </LinearLayout>
 
     <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:text="@string/nlu_section_voice"
-        android:textColor="#80FFFFFF"
-        android:textSize="11sp" />
-
-    <TextView
         android:id="@+id/tv_voice_status"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
