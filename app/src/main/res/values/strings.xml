@@ -1,0 +1,19 @@
+<resources>
+
+    <string name="app_name">Robot App Sample</string>
+    <string name="exit">Exit</string>
+    <string name="back_text">Back</string>
+    <string name="clear_screen">Clear</string>
+    <string name="recovery_screen">RCVY</string>
+    <string name="output_result">Result:</string>
+    <string name="connect_failed">Your sdk init failed<br/><br/> Make sure launch this app from Home Launcher!<br/><br/> 你的SDK初始化失败了<br/>请确保从应用中心启动此程序。</string>
+
+    <string name="nlu_test">NLU Test</string>
+    <string name="nlu_input_hint">输入文本进行语义理解测试</string>
+    <string name="nlu_query">查询</string>
+    <string name="nlu_clear">清空</string>
+    <string name="nlu_section_voice">语音识别状态（机器人 ASR 自动接收）</string>
+    <string name="nlu_voice_waiting">等待语音输入...</string>
+    <string name="nlu_raw_response">原始返回数据：</string>
+
+</resources>
