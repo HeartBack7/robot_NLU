@@ -43,6 +43,13 @@ public class MainFragment extends BaseFragment {
             }
         });
 
+        root.findViewById(R.id.navigation_scene).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                switchFragment(NavigationFragment.newInstance());
+            }
+        });
+
         root.findViewById(R.id.exit).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {

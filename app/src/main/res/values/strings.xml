@@ -16,4 +16,21 @@
     <string name="nlu_voice_waiting">等待语音输入...</string>
     <string name="nlu_raw_response">原始返回数据：</string>
 
+    <string name="navigation">导航</string>
+    <string name="navigation_stop">停止</string>
+    <string name="navigation_resume_direction">恢复方向</string>
+
+    <string name="positioning_spot">定位点</string>
+    <string name="charging_point">充电点</string>
+    <string name="charging_pole">充电桩</string>
+    <string name="stand_by_spot">待命点</string>
+    <string name="reception_point">接待点</string>
+
+    <string name="go_navigation">去导航？</string>
+    <string name="sure_go_navigation">确定导航到 %s 吗？</string>
+    <string name="cancel_txt">取消</string>
+    <string name="confirm_txt">确定</string>
+
+    <string name="forbid_line_explain">已添加禁行线或无需添加。请点击「保存」。</string>
+
 </resources>
