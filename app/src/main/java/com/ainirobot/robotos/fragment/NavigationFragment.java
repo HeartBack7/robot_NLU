@@ -18,6 +18,8 @@ package com.ainirobot.robotos.fragment;
 
 import android.content.Context;
 import android.os.RemoteException;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.util.Log;
@@ -33,10 +35,18 @@ import com.ainirobot.coreservice.client.RobotApi;
 import com.ainirobot.coreservice.client.actionbean.Pose;
 import com.ainirobot.coreservice.client.listener.ActionListener;
 import com.ainirobot.coreservice.client.listener.CommandListener;
+import com.ainirobot.coreservice.client.speech.SkillApi;
 import com.ainirobot.robotos.LogTools;
 import com.ainirobot.robotos.R;
+import com.ainirobot.robotos.application.ModuleCallback;
+import com.ainirobot.robotos.application.RobotOSApplication;
+import com.ainirobot.robotos.application.SpeechCallback;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.lang.reflect.Type;
 import java.util.List;
@@ -46,19 +56,28 @@ public class NavigationFragment extends BaseFragment {
     private Button mTurn_direction;
     private Button mStop_navigation;
     private Button mStart_navigation;
-    private Button checkPassGate;
-    private Button start_pose_name;
-    private Button end_pose_name;
-    private TextView check_pass_gate_status;
     private EditText mNavigation_point;
     private Gson mGson;
-    private Pose enterPose;
-    private int currentStatus = 0;//0,导航前，1.导航至第一个点位，开启闸机，2.导航至第二个点位，关闭闸机 3.导航至终点
+
+    // 语音/NLU 测试 + 语音导航
+    private EditText mEtNavNluInput;
+    private Button mBtnNavNluQuery;
+    private Button mBtnNavNluClear;
+    private TextView mTvNavVoiceStatus;
+    private TextView mTvNavDomain;
+    private TextView mTvNavIntent;
+    private TextView mTvNavDestination;
+    private TextView mTvNavRawResult;
+    private SkillApi mSkillApi;
+    private final Handler mMainHandler = new Handler(Looper.getMainLooper());
+    private String mLastVoicePlaceName;
 
     @Override
     public View onCreateView(Context context) {
         View root = mInflater.inflate(R.layout.fragment_navigation_layout, null, false);
+        mSkillApi = RobotOSApplication.getInstance().getSkillApi();
         initViews(root);
+        initVoiceNluViews(root);
         return root;
     }
 
@@ -67,11 +86,6 @@ public class NavigationFragment extends BaseFragment {
         mStop_navigation = (Button) root.findViewById(R.id.stop_navigation);
         mStart_navigation = (Button) root.findViewById(R.id.start_navigation);
         mNavigation_point = (EditText) root.findViewById(R.id.et_navigation_point);
-        checkPassGate = root.findViewById(R.id.check_pass_gate);
-        start_pose_name = root.findViewById(R.id.start_pose_name);
-        end_pose_name = root.findViewById(R.id.end_pose_name);
-        check_pass_gate_status = root.findViewById(R.id.check_pass_gate_status);
-
 
         mStart_navigation.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -94,27 +108,303 @@ public class NavigationFragment extends BaseFragment {
             }
         });
 
-        checkPassGate.setOnClickListener(new View.OnClickListener() {
+    }
+
+    private void initVoiceNluViews(View root) {
+        mEtNavNluInput = root.findViewById(R.id.et_nav_nlu_input);
+        mBtnNavNluQuery = root.findViewById(R.id.btn_nav_nlu_query);
+        mBtnNavNluClear = root.findViewById(R.id.btn_nav_nlu_clear);
+        mTvNavVoiceStatus = root.findViewById(R.id.tv_nav_voice_status);
+        mTvNavDomain = root.findViewById(R.id.tv_nav_domain);
+        mTvNavIntent = root.findViewById(R.id.tv_nav_intent);
+        mTvNavDestination = root.findViewById(R.id.tv_nav_destination);
+        mTvNavRawResult = root.findViewById(R.id.tv_nav_raw_result);
+
+        mBtnNavNluQuery.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                checkoutPassGate();
+                String text = mEtNavNluInput.getText().toString().trim();
+                if (TextUtils.isEmpty(text)) {
+                    return;
+                }
+                queryByText(text);
             }
         });
-        start_pose_name.setOnClickListener(new View.OnClickListener() {
+
+        mBtnNavNluClear.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                //若未知导航点位名称，则直接请求到对应Pose点
-                startNavigation(start_pose_name.getText().toString());
-                end_pose_name.setEnabled(true);
+                clearVoiceResults();
             }
         });
-        end_pose_name.setOnClickListener(new View.OnClickListener() {
+
+        registerVoiceListeners();
+    }
+
+    private void registerVoiceListeners() {
+        SpeechCallback.setNluResultListener(new SpeechCallback.NluResultListener() {
             @Override
-            public void onClick(View v) {
-                //若未知导航点位名称，则直接请求到对应Pose点
-                startNavigation(end_pose_name.getText().toString());
+            public void onNluResult(final String rawResult) {
+                mMainHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        parseAndDisplayVoiceResult(rawResult);
+                    }
+                });
+            }
+
+            @Override
+            public void onAsrResult(final String asrResult) {
+                mMainHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (mTvNavVoiceStatus != null) {
+                            mTvNavVoiceStatus.setText("ASR: " + asrResult);
+                        }
+                    }
+                });
             }
         });
+
+        ModuleCallback.setSpeechRequestListener(new ModuleCallback.SpeechRequestListener() {
+            @Override
+            public void onSpeechRequest(int reqId, final String reqType, final String reqText, final String reqParam) {
+                mMainHandler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (mTvNavVoiceStatus != null) {
+                            mTvNavVoiceStatus.setText("语音识别: " + reqText);
+                        }
+                        if (!TextUtils.isEmpty(reqParam)) {
+                            parseAndDisplayVoiceResult(reqParam);
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    private void queryByText(String text) {
+        if (mSkillApi == null) {
+            mSkillApi = RobotOSApplication.getInstance().getSkillApi();
+        }
+        if (mSkillApi != null) {
+            if (mTvNavVoiceStatus != null) {
+                mTvNavVoiceStatus.setText("查询中: " + text);
+            }
+            LogTools.info("NavigationFragment queryByText: " + text);
+            mSkillApi.queryByText(text);
+        } else {
+            if (mTvNavVoiceStatus != null) {
+                mTvNavVoiceStatus.setText("SkillApi 未连接");
+            }
+            LogTools.info("NavigationFragment: SkillApi is null");
+        }
+    }
+
+    private void parseAndDisplayVoiceResult(String rawResult) {
+        if (TextUtils.isEmpty(rawResult)) {
+            return;
+        }
+
+        if (mTvNavRawResult != null) {
+            mTvNavRawResult.setText(rawResult);
+        }
+
+        String domain = "--";
+        String intent = "--";
+        String dest = null;
+        try {
+            JSONObject json = new JSONObject(rawResult);
+            domain = json.optString("englishDomain", "--");
+            intent = json.optString("englishIntent", "--");
+            dest = extractDestination(json);
+        } catch (Exception e) {
+            LogTools.info("NavigationFragment parse error: " + e.getMessage());
+        }
+
+        if (mTvNavDomain != null) {
+            mTvNavDomain.setText(domain);
+        }
+        if (mTvNavIntent != null) {
+            mTvNavIntent.setText(intent);
+        }
+
+        if (!TextUtils.isEmpty(dest)) {
+            mLastVoicePlaceName = dest;
+            if (mTvNavDestination != null) {
+                mTvNavDestination.setText(dest);
+            }
+            if (mNavigation_point != null) {
+                mNavigation_point.setText(dest);
+                mNavigation_point.setSelection(dest.length());
+            }
+        } else {
+            if (mTvNavDestination != null) {
+                mTvNavDestination.setText("--");
+            }
+        }
+    }
+
+    private String extractDestination(JSONObject json) {
+        if (json == null) {
+            return null;
+        }
+
+        // 0) 实际使用的解析逻辑
+        try {
+            // 先尝试作为 JSONObject 获取
+            JSONObject nlpData = json.optJSONObject("nlpData");
+
+            // 如果获取不到，尝试作为字符串解析
+            if (nlpData == null) {
+                String nlpDataStr = json.optString("nlpData", "");
+                if (!nlpDataStr.isEmpty()) {
+                    nlpData = new JSONObject(nlpDataStr);
+                }
+            }
+
+            if (nlpData != null) {
+                JSONArray nlpDetail = nlpData.optJSONArray("detail");
+                if (nlpDetail != null && nlpDetail.length() > 0) {
+                    JSONObject firstDetail = nlpDetail.optJSONObject(0);
+                    if (firstDetail != null) {
+                        JSONObject slots = firstDetail.optJSONObject("slots");
+                        if (slots != null) {
+                            JSONArray destination = slots.optJSONArray("destination");
+                            if (destination == null) {
+                                destination = slots.optJSONArray("location");
+                            }
+                            if (destination != null && destination.length() > 0) {
+                                JSONObject destObj = destination.optJSONObject(0);
+                                if (destObj != null) {
+                                    // 优先取value，如果没有则取text
+                                    String destinationValue = destObj.optString("value", "");
+                                    if (destinationValue.isEmpty()) {
+                                        destinationValue = destObj.optString("text", "");
+                                    }
+                                    return destinationValue;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (JSONException e) {
+            // 处理解析异常
+            e.printStackTrace();
+        }
+
+        // 1) 直接字段（不同链路可能会带）
+        String direct = firstNonEmpty(
+                json.optString("destination", null),
+                json.optString("targetPlace", null),
+                json.optString("placeName", null),
+                json.optString("poi", null),
+                json.optString("goal", null),
+                json.optString("target", null)
+        );
+        if (!TextUtils.isEmpty(direct)) {
+            return direct;
+        }
+
+        // 2) slots: [{name, value/text/normValue/...}]
+        String fromSlots = readSlotsValue(json.optJSONArray("slots"));
+        if (!TextUtils.isEmpty(fromSlots)) {
+            return fromSlots;
+        }
+
+        // 3) semantic.slots
+        JSONObject semantic = json.optJSONObject("semantic");
+        if (semantic != null) {
+            String semSlots = readSlotsValue(semantic.optJSONArray("slots"));
+            if (!TextUtils.isEmpty(semSlots)) {
+                return semSlots;
+            }
+        }
+
+        return null;
+    }
+
+    private String readSlotsValue(JSONArray slots) {
+        if (slots == null) {
+            return null;
+        }
+        for (int i = 0; i < slots.length(); i++) {
+            JSONObject slot = slots.optJSONObject(i);
+            if (slot == null) {
+                continue;
+            }
+            String name = firstNonEmpty(
+                    slot.optString("name", ""),
+                    slot.optString("slotName", ""),
+                    slot.optString("dict_name", "")
+            );
+            if (!isDestinationSlotName(name)) {
+                continue;
+            }
+
+            String value = firstNonEmpty(
+                    slot.optString("value", null),
+                    slot.optString("normValue", null),
+                    slot.optString("text", null),
+                    slot.optString("rawValue", null)
+            );
+            if (!TextUtils.isEmpty(value)) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private boolean isDestinationSlotName(String name) {
+        if (TextUtils.isEmpty(name)) {
+            return false;
+        }
+        String n = name.toLowerCase();
+        return n.contains("dest")
+                || n.contains("destination")
+                || n.contains("place")
+                || n.contains("poi")
+                || n.contains("goal")
+                || n.contains("target")
+                || n.contains("location")
+                || n.contains("目的地")
+                || n.contains("地点");
+    }
+
+    private String firstNonEmpty(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String v : values) {
+            if (!TextUtils.isEmpty(v)) {
+                return v;
+            }
+        }
+        return null;
+    }
+
+    private void clearVoiceResults() {
+        mLastVoicePlaceName = null;
+        if (mTvNavDomain != null) {
+            mTvNavDomain.setText("--");
+        }
+        if (mTvNavIntent != null) {
+            mTvNavIntent.setText("--");
+        }
+        if (mTvNavDestination != null) {
+            mTvNavDestination.setText("--");
+        }
+        if (mTvNavRawResult != null) {
+            mTvNavRawResult.setText("--");
+        }
+        if (mTvNavVoiceStatus != null) {
+            mTvNavVoiceStatus.setText(getString(R.string.nlu_voice_waiting));
+        }
+        if (mEtNavNluInput != null) {
+            mEtNavNluInput.setText("");
+        }
     }
 
     private String getNavigationPoint(){
@@ -144,91 +434,6 @@ public class NavigationFragment extends BaseFragment {
         //startNavigation(int reqId, Pose pose, double coordinateDeviation, long time, ActionListener listener)
     }
 
-
-    /**
-     * checkoutPassGate
-     * 判断导航到指定位置时是否需要经过闸机
-     */
-    private void checkoutPassGate() {
-        String navigationPoint = getNavigationPoint();
-        if (TextUtils.isEmpty(navigationPoint)) {
-            LogTools.info("Point not exist: " + navigationPoint);
-            LogTools.info("目标点不存在: " + navigationPoint);
-            return;
-        }
-        currentStatus = 0;
-        check_pass_gate_status.setVisibility(View.VISIBLE);
-        RobotApi.getInstance().getGatePassingRoute(2, getNavigationPoint(), new CommandListener() {
-            @Override
-            public void onResult(int result, String message, String extraData) {
-                super.onResult(result, message, extraData);
-                //显示在界面上
-                LogTools.info("getGatePassingRoute result: " + result + " message: " + message + "extra：" + extraData);
-                getPoint();
-                try {
-                    if (result == 1 && !TextUtils.isEmpty(message)) {
-                        Gson gson = new Gson();
-                        Type listType = new TypeToken<List<Pose>>() {
-                        }.getType();
-                        List<Pose> poseList = gson.fromJson(message, listType);
-                        if (poseList != null && poseList.size() == 2) {
-                            check_pass_gate_status.setText("需要经过闸机，请先导航至第一个闸机点位");
-                            //1.直接取返回的两个点位进行先后导航，2.也可根据点位名称进行对应的引导
-                            //此条为有名称匹配，引导时，将返回的两个节点和已知节点相匹配,随意取一个点即可
-                            double distance = RobotApi.getInstance().getPlaceOrPoseDistance("闸机入口", poseList.get(0));
-                            double distance1 = RobotApi.getInstance().getPlaceOrPoseDistance("闸机入口", poseList.get(1));
-                            LogTools.info("getGatePassingRoute distance: " + distance + "distance1 " + distance1);
-                            getActivity().runOnUiThread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    start_pose_name.setText(distance > distance1 ? "闸机出口" : "闸机入口");
-                                    end_pose_name.setText(distance > distance1 ? "闸机入口" : "闸机出口");
-                                    start_pose_name.setVisibility(View.VISIBLE);
-                                    end_pose_name.setVisibility(View.VISIBLE);
-                                    end_pose_name.setEnabled(false);
-                                }
-                            });
-                        }else {
-                            getActivity().runOnUiThread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    check_pass_gate_status.setText("点位小于两个，不需要经过闸机");
-                                }
-                            });
-                        }
-                    } else {
-                        getActivity().runOnUiThread(new Runnable() {
-                            @Override
-                            public void run() {
-                                check_pass_gate_status.setText("获取失败，请重试");
-                            }
-                        });
-                    }
-                } catch (Exception e) {
-                    LogTools.info("onError result: " + e.getMessage());
-                    getActivity().runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            check_pass_gate_status.setText("获取失败，请重试");
-                        }
-                    });
-                }
-            }
-
-            @Override
-            public void onStatusUpdate(int status, String data, String extraData) {
-                super.onStatusUpdate(status, data, extraData);
-                LogTools.info("onStatusUpdate result: " + status + " message: " + data);
-            }
-
-            @Override
-            public void onError(int errorCode, String errorString, String extraData) throws RemoteException {
-                super.onError(errorCode, errorString, extraData);
-                check_pass_gate_status.setText("onError result: " + errorCode + " message: " + errorString);
-                LogTools.info("onError result: " + errorCode + " message: " + errorString);
-            }
-        });
-    }
 
     /**
      * stopNavigation
@@ -283,23 +488,8 @@ public class NavigationFragment extends BaseFragment {
             switch (status) {
                 case Definition.RESULT_OK:
                     if ("true".equals(response)) {
-                        currentStatus++;
                         LogTools.info("startNavigation result: " + status + "(Navigation success)" + " message: " + response);
-                        LogTools.info("startNavigation result: " + status + "(导航成功)" + " message: " + response + "CS:" + currentStatus);
-                        getActivity().runOnUiThread(new Runnable() {
-                            @Override
-                            public void run() {
-                                if (currentStatus == 1) {
-                                    check_pass_gate_status.setText("请打开闸机，之后导航到下一个闸机点位");
-                                    //...闸机操作
-                                } else if (currentStatus == 2) {
-                                    check_pass_gate_status.setText("请关闭闸机，之后导航至目标点位");
-                                    //...闸机操作
-                                } else if (currentStatus == 3) {
-                                    check_pass_gate_status.setText("闸机导航结束");
-                                }
-                            }
-                        });
+                        LogTools.info("startNavigation result: " + status + "(导航成功)" + " message: " + response);
 
                     } else {
                         LogTools.info("startNavigation result: " + status +"(Navigation failed)"+ " message: "+  response);
@@ -362,5 +552,12 @@ public class NavigationFragment extends BaseFragment {
 
     public static Fragment newInstance() {
         return new NavigationFragment();
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+        SpeechCallback.setNluResultListener(null);
+        ModuleCallback.setSpeechRequestListener(null);
     }
 }
