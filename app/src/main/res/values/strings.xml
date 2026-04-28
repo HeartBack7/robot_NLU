@@ -14,6 +14,8 @@
     <string name="nlu_clear">清空</string>
     <string name="nlu_section_voice">语音识别状态（机器人 ASR 自动接收）</string>
     <string name="nlu_voice_waiting">等待语音输入...</string>
+    <string name="nlu_voice_input_on">语音解析开</string>
+    <string name="nlu_voice_input_off">语音解析关</string>
     <string name="nlu_raw_response">原始返回数据：</string>
 
     <string name="navigation">导航</string>

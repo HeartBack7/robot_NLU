@@ -77,6 +77,16 @@
             android:textSize="14sp" />
 
         <Button
+            android:id="@+id/btn_nav_voice_input"
+            android:layout_width="80dp"
+            android:layout_height="30dp"
+            android:layout_marginStart="4dp"
+            android:background="#9E9E9E"
+            android:text="@string/nlu_voice_input_off"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp" />
+
+        <Button
             android:id="@+id/btn_nav_nlu_query"
             android:layout_width="50dp"
             android:layout_height="30dp"

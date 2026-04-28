@@ -27,6 +27,7 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
+import android.graphics.Color;
 
 import androidx.fragment.app.Fragment;
 
@@ -63,6 +64,7 @@ public class NavigationFragment extends BaseFragment {
     private EditText mEtNavNluInput;
     private Button mBtnNavNluQuery;
     private Button mBtnNavNluClear;
+    private Button mBtnNavVoiceInput;
     private TextView mTvNavVoiceStatus;
     private TextView mTvNavDomain;
     private TextView mTvNavIntent;
@@ -71,6 +73,7 @@ public class NavigationFragment extends BaseFragment {
     private SkillApi mSkillApi;
     private final Handler mMainHandler = new Handler(Looper.getMainLooper());
     private String mLastVoicePlaceName;
+    private boolean mVoiceInputEnabled = false;
 
     @Override
     public View onCreateView(Context context) {
@@ -112,6 +115,7 @@ public class NavigationFragment extends BaseFragment {
 
     private void initVoiceNluViews(View root) {
         mEtNavNluInput = root.findViewById(R.id.et_nav_nlu_input);
+        mBtnNavVoiceInput = root.findViewById(R.id.btn_nav_voice_input);
         mBtnNavNluQuery = root.findViewById(R.id.btn_nav_nlu_query);
         mBtnNavNluClear = root.findViewById(R.id.btn_nav_nlu_clear);
         mTvNavVoiceStatus = root.findViewById(R.id.tv_nav_voice_status);
@@ -119,6 +123,17 @@ public class NavigationFragment extends BaseFragment {
         mTvNavIntent = root.findViewById(R.id.tv_nav_intent);
         mTvNavDestination = root.findViewById(R.id.tv_nav_destination);
         mTvNavRawResult = root.findViewById(R.id.tv_nav_raw_result);
+
+        if (mBtnNavVoiceInput != null) {
+            updateVoiceInputUi();
+            mBtnNavVoiceInput.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    mVoiceInputEnabled = !mVoiceInputEnabled;
+                    updateVoiceInputUi();
+                }
+            });
+        }
 
         mBtnNavNluQuery.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -141,6 +156,20 @@ public class NavigationFragment extends BaseFragment {
         registerVoiceListeners();
     }
 
+    private void updateVoiceInputUi() {
+        if (mBtnNavVoiceInput == null) {
+            return;
+        }
+        if (mVoiceInputEnabled) {
+            mBtnNavVoiceInput.setText(R.string.nlu_voice_input_on);
+            mBtnNavVoiceInput.setBackgroundColor(Color.parseColor("#2196F3"));
+        } else {
+            mBtnNavVoiceInput.setText(R.string.nlu_voice_input_off);
+            mBtnNavVoiceInput.setBackgroundColor(Color.parseColor("#9E9E9E"));
+        }
+        mBtnNavVoiceInput.setTextColor(Color.WHITE);
+    }
+
     private void registerVoiceListeners() {
         SpeechCallback.setNluResultListener(new SpeechCallback.NluResultListener() {
             @Override
@@ -148,6 +177,9 @@ public class NavigationFragment extends BaseFragment {
                 mMainHandler.post(new Runnable() {
                     @Override
                     public void run() {
+                        if (!mVoiceInputEnabled) {
+                            return;
+                        }
                         parseAndDisplayVoiceResult(rawResult);
                     }
                 });
@@ -174,6 +206,9 @@ public class NavigationFragment extends BaseFragment {
                     public void run() {
                         if (mTvNavVoiceStatus != null) {
                             mTvNavVoiceStatus.setText("语音识别: " + reqText);
+                        }
+                        if (!mVoiceInputEnabled) {
+                            return;
                         }
                         if (!TextUtils.isEmpty(reqParam)) {
                             parseAndDisplayVoiceResult(reqParam);
