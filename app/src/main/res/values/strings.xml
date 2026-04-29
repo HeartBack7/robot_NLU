@@ -35,4 +35,18 @@
 
     <string name="forbid_line_explain">已添加禁行线或无需添加。请点击「保存」。</string>
 
+    <string name="voice_qa_entry">语音问答（百炼）</string>
+    <string name="voice_qa_hint">语音问答：点击下方按钮开启监听，使用机器人自带 ASR，识别 JSON 中 userText 后交给阿里云百炼流式返回答案并播报。</string>
+    <string name="voice_qa_start">开启语音问答</string>
+    <string name="voice_qa_stop">停止语音问答</string>
+    <string name="voice_qa_listening">语音问答已开启，等待机器人 ASR 输入…</string>
+    <string name="voice_qa_stopped">语音问答已停止</string>
+    <string name="voice_qa_no_key">未配置 dashscope.api.key，请在 local.properties 中添加。</string>
+    <string name="voice_qa_no_speech">本机不支持或未安装语音识别服务。</string>
+    <string name="voice_qa_recog_error">语音识别失败</string>
+    <string name="voice_qa_network_error">网络请求失败</string>
+    <string name="voice_qa_mic_denied">需要麦克风权限才能使用语音问答。</string>
+    <string name="voice_qa_wait_answer">正在生成回答，请稍候。</string>
+    <string name="voice_qa_interim_prefix">识别中：</string>
+
 </resources>

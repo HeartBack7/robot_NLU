@@ -18,7 +18,6 @@ package com.ainirobot.robotos.fragment;
 
 import android.content.Context;
 import android.view.View;
-import android.widget.Button;
 
 import androidx.fragment.app.Fragment;
 
@@ -36,6 +35,13 @@ public class MainFragment extends BaseFragment {
     }
 
     private void bindViews(View root) {
+        root.findViewById(R.id.btn_voice_qa_entry).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                switchFragment(VoiceQaFragment.newInstance());
+            }
+        });
+
         root.findViewById(R.id.nlu_test).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
