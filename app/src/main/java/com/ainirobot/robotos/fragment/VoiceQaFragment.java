@@ -6,7 +6,6 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
-import android.speech.tts.TextToSpeech;
 import android.text.TextUtils;
 import android.view.View;
 import android.widget.Button;
@@ -18,14 +17,17 @@ import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 
+import com.ainirobot.coreservice.client.listener.TextListener;
+import com.ainirobot.coreservice.client.speech.SkillApi;
+import com.ainirobot.coreservice.client.speech.entity.TTSEntity;
 import com.ainirobot.robotos.BuildConfig;
+import com.ainirobot.robotos.LogTools;
 import com.ainirobot.robotos.R;
 import com.ainirobot.robotos.application.ModuleCallback;
+import com.ainirobot.robotos.application.RobotOSApplication;
 import com.ainirobot.robotos.application.SpeechCallback;
 import com.ainirobot.robotos.bailian.DashScopeStreamChat;
 
-import java.util.HashMap;
-import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
@@ -42,7 +44,7 @@ public class VoiceQaFragment extends BaseFragment {
     private TextView tvVoiceQa;
     private ScrollView svVoiceQa;
     private Button btnVoiceQa;
-    private TextToSpeech tts;
+    private SkillApi mSkillApi;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService ioPool = Executors.newSingleThreadExecutor();
     private final DashScopeStreamChat dashClient = new DashScopeStreamChat();
@@ -54,6 +56,7 @@ public class VoiceQaFragment extends BaseFragment {
 
     @Override
     public View onCreateView(Context context) {
+        mSkillApi = RobotOSApplication.getInstance().getSkillApi();
         View root = mInflater.inflate(R.layout.fragment_voice_qa_layout, null, false);
         bindViews(root);
         showBackView();
@@ -67,11 +70,7 @@ public class VoiceQaFragment extends BaseFragment {
         dashClient.cancel();
         ioPool.shutdownNow();
         unregisterSpeechListeners();
-        if (tts != null) {
-            tts.stop();
-            tts.shutdown();
-            tts = null;
-        }
+        stopRobotTts();
         super.onDestroyView();
     }
 
@@ -122,6 +121,7 @@ public class VoiceQaFragment extends BaseFragment {
             cancelPendingAsrCommit();
             stripInterimLineFromDisplay();
             unregisterSpeechListeners();
+            stopRobotTts();
             appendLine(getString(R.string.voice_qa_stopped));
         }
         updateVoiceQaButton();
@@ -134,21 +134,6 @@ public class VoiceQaFragment extends BaseFragment {
             appendLine(getString(R.string.voice_qa_listening));
             updateVoiceQaButton();
         }
-        ensureTts();
-    }
-
-    private void ensureTts() {
-        if (tts != null) {
-            return;
-        }
-        tts = new TextToSpeech(mActivity, new TextToSpeech.OnInitListener() {
-            @Override
-            public void onInit(int status) {
-                if (status == TextToSpeech.SUCCESS && tts != null) {
-                    tts.setLanguage(Locale.CHINESE);
-                }
-            }
-        });
     }
 
     private void registerSpeechListeners() {
@@ -350,9 +335,7 @@ public class VoiceQaFragment extends BaseFragment {
                                     @Override
                                     public void run() {
                                         awaitingAnswer = false;
-                                        if (tts != null && fullText != null && fullText.length() > 0) {
-                                            speakAnswer(fullText);
-                                        }
+                                        speakAnswer(fullText);
                                     }
                                 });
                             }
@@ -406,17 +389,84 @@ public class VoiceQaFragment extends BaseFragment {
         });
     }
 
-    @SuppressWarnings("deprecation")
+    /**
+     * 使用机器人原生 TTS（与 SpeechFragment 中 Play 按钮一致）播报大模型回答。
+     * 仅播报模型返回内容本身，过滤掉 UI 提示词（如"识别中："、"正在生成回答，请稍候。"等）。
+     */
     private void speakAnswer(String fullText) {
-        if (tts == null) {
+        if (mSkillApi == null) {
+            mSkillApi = RobotOSApplication.getInstance().getSkillApi();
+        }
+        if (mSkillApi == null) {
             return;
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            tts.speak(fullText, TextToSpeech.QUEUE_FLUSH, null, "bailian");
-        } else {
-            tts.speak(fullText, TextToSpeech.QUEUE_FLUSH, new HashMap<String, String>());
+        String toSpeak = sanitizeForTts(fullText);
+        if (TextUtils.isEmpty(toSpeak)) {
+            return;
+        }
+        mSkillApi.playText(new TTSEntity("voice-qa-" + System.currentTimeMillis(), toSpeak),
+                mTtsListener);
+    }
+
+    private void stopRobotTts() {
+        if (mSkillApi != null) {
+            mSkillApi.stopTTS();
         }
     }
+
+    /**
+     * 移除可能误入的 UI 提示词，确保只播报大模型真正的回答内容。
+     */
+    private String sanitizeForTts(String fullText) {
+        if (TextUtils.isEmpty(fullText)) {
+            return "";
+        }
+        String text = fullText;
+        String[] uiPrompts = {
+                getString(R.string.voice_qa_wait_answer),
+                getString(R.string.voice_qa_interim_prefix),
+                getString(R.string.voice_qa_listening),
+                getString(R.string.voice_qa_stopped),
+                getString(R.string.voice_qa_hint),
+                getString(R.string.voice_qa_recog_error),
+                getString(R.string.voice_qa_network_error),
+                getString(R.string.voice_qa_mic_denied),
+                getString(R.string.voice_qa_no_key),
+                getString(R.string.voice_qa_no_speech)
+        };
+        for (String p : uiPrompts) {
+            if (!TextUtils.isEmpty(p)) {
+                text = text.replace(p, "");
+            }
+        }
+        return text.trim();
+    }
+
+    private final TextListener mTtsListener = new TextListener() {
+        @Override
+        public void onStart() {
+            super.onStart();
+            LogTools.info("VoiceQa TTS onStart");
+        }
+
+        @Override
+        public void onStop() {
+            super.onStop();
+            LogTools.info("VoiceQa TTS onStop");
+        }
+
+        @Override
+        public void onComplete() {
+            super.onComplete();
+            LogTools.info("VoiceQa TTS onComplete");
+        }
+
+        @Override
+        public void onError() {
+            super.onError();
+            LogTools.info("VoiceQa TTS onError");
+        }
+    };
 
     public static Fragment newInstance() {
         return new VoiceQaFragment();
