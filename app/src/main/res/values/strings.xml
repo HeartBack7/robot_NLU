@@ -49,4 +49,10 @@
     <string name="voice_qa_wait_answer">正在生成回答，请稍候。</string>
     <string name="voice_qa_interim_prefix">识别中：</string>
 
+    <string name="speech_entry">语音播报 / 文本查询</string>
+    <string name="speech_hint_text">Play text/Query text</string>
+    <string name="speech_play">Play</string>
+    <string name="speech_stop">Stop</string>
+    <string name="speech_query">Query</string>
+
 </resources>

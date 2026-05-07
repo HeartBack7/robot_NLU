@@ -56,6 +56,13 @@ public class MainFragment extends BaseFragment {
             }
         });
 
+        root.findViewById(R.id.btn_speech_entry).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                switchFragment(SpeechFragment.newInstance());
+            }
+        });
+
         root.findViewById(R.id.exit).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
